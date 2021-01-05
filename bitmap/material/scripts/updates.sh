@@ -1,45 +1,88 @@
 #!/usr/bin/env bash
 
-NOTIFY_ICON=/usr/share/icons/Papirus/32x32/apps/system-software-update.svg
+NOTIFY_ICON=/usr/share/icons/Qogir-dark/32/apps/system-software-update.svg
+LOGPATH=`dirname $(readlink -f ${0})`
+LOGFILE=updates.log
+PAGFILE=package.log
+LOGFULL=$LOGPATH/logs/$LOGFILE
+PACKAGETXT=$LOGPATH/logs/$PAGFILE
+VER=$(hostnamectl | grep "Operating System:" | awk '{printf "%s %s",$3,$4}')
+TNOW=$(date "+%s");
+ICON=" "
+STATUS=0
+MAXALTER=86400;      # ---- Berechnet sich wie folgt 24*60*60=86400 Sekunden
 
-get_total_updates() { UPDATES=$(checkupdates 2>/dev/null | wc -l); }
+function Get_Updates {
+            apt-get update > /dev/null 2> /dev/null
+            AVUP=`apt-get dist-upgrade -qq -y -s |  grep -c '^Inst '`
+            AVPACK=`apt-get dist-upgrade -qq -y -s |  awk '/^Inst / { print $2 }' | sed ':a;N;$!ba;s/\n/ /g'`
+            AVUPA=$(($AVUP + 1));
+            AVUP=$(($AVUPA - 1));
+            if [ $AVUP != 0 ]; then
+                STATUS=1
+                #STATUSTXT="$AVUP Updates ($AVPACK)"
+                STATUSTXT="$AVUP"
+                PACKAGES="$AVPACK"
+            else
+                STATUS=0
+                STATUSTXT="0"
+                PACKAGES=""
+            fi
 
-while true; do
-    get_total_updates
+        echo "$STATUSTXT" > $LOGFULL
+        echo "$PACKAGES" > $PACKAGETXT
+        output_to_polybar
+}
 
-    # notify user of updates
-    if hash notify-send &>/dev/null; then
-        if (( UPDATES > 50 )); then
-            notify-send -u critical -i $NOTIFY_ICON \
-                "You really need to update!!" "$UPDATES New packages"
-        elif (( UPDATES > 25 )); then
-            notify-send -u normal -i $NOTIFY_ICON \
-                "You should update soon" "$UPDATES New packages"
-        elif (( UPDATES > 2 )); then
-            notify-send -u low -i $NOTIFY_ICON \
-                "$UPDATES New packages"
-        fi
+function output_to_bar {
+    found_updates=$(cat $LOGFULL)
+    if [ "${found_updates}" != "0" ]; then
+        echo '<span foreground="#8c5257">'${ICON}'</span>'
+    else
+        echo '<span foreground="#3a7634">'${ICON}'</span>'
     fi
+}
 
-    # when there are updates available
-    # every 10 seconds another check for updates is done
-    while (( UPDATES > 0 )); do
-        if (( UPDATES == 1 )); then
-            echo " $UPDATES"
-        elif (( UPDATES > 1 )); then
-            echo " $UPDATES"
-        else
-            echo " None"
-        fi
-        sleep 10
-        get_total_updates
-    done
+function output_to_polybar {
+    found_updates=$(cat $LOGFULL)
+    UPDATES=$(cat $PACKAGETXT)
 
-    # when no updates are available, use a longer loop, this saves on CPU
-    # and network uptime, only checking once every 30 min for new updates
-    while (( UPDATES == 0 )); do
-        echo " None"
-        sleep 1800
-        get_total_updates
-    done
-done
+    if [ "${found_updates}" != "0" ]; then
+        echo " ${found_updates}"
+    else
+        echo " 0"
+    fi
+    
+}
+
+case $BLOCK_BUTTON in
+    1)
+        apt_upd=$(cat $PACKAGETXT)
+        notify-send -u normal -i "Updates" "$apt_upd"
+        ;;
+    3)
+        rm ${LOGFULL}
+        Get_Updates
+        i3-msg reload
+esac
+
+mkdir -p ${LOGPATH}/logs
+
+if [ -e $LOGFULL ]; then
+TDATEI=$(stat -c %Z $LOGFULL)
+ALTER=$(($TNOW - $TDATEI))
+MAXALTER=86400     # ---- Berechnet sich wie folgt 24*60*60=86400 Sekunden
+    if [ $ALTER -gt $MAXALTER ]; then
+        Get_Updates
+    else
+        output_to_polybar
+        exit
+    fi
+else
+    Get_Updates
+fi
+
+exit
+
+
+
