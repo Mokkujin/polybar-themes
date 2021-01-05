@@ -1,5 +1,7 @@
 <!-- Polybar Themes-->
 
+ITS JUST A FORK FROM https://github.com/adi1090x/polybar-themes.git tp update some script for my system !
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/adi1090x/files/master/polybar-themes/previews/logo.png">
 </p>
